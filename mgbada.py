@@ -4,6 +4,7 @@ from flask import Flask, request
 import os
 import logging
 import asyncio
+import google.generativeai as genai
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,16 +16,38 @@ flask_app = Flask(__name__)
 # Telegram Bot Configuration
 BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # e.g., https://your-app.onrender.com
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Configure Gemini AI
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-pro')
 
 # /start command response
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Base bot active. Ready to build. 🚀")
+    await update.message.reply_text("🤖 Bot active with Gemini AI!\n\nJust type a message and I'll respond with AI-powered answers.")
 
-# Chat handler: Echoes back whatever you type
+# Chat handler: Send to Gemini and reply
 async def echo_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
-    reply_text = f"Bot received: {user_text} ✅ (Connection is working!)"
-    await update.message.reply_text(reply_text)
+    
+    # Show typing indicator
+    await update.message.chat.send_action("typing")
+    
+    try:
+        # Get response from Gemini
+        response = model.generate_content(user_text)
+        reply_text = response.text
+        
+        # Split long messages (Telegram has 4096 char limit)
+        if len(reply_text) > 4096:
+            for i in range(0, len(reply_text), 4096):
+                await update.message.reply_text(reply_text[i:i+4096])
+        else:
+            await update.message.reply_text(reply_text)
+            
+    except Exception as e:
+        logger.error(f"Error calling Gemini: {str(e)}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
 
 # Build app and register behaviors
 app = ApplicationBuilder().token(BOT_TOKEN).build()
